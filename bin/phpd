@@ -1,6 +1,5 @@
-#!/usr/bin/php -q
+#!/usr/bin/env php
 <?php
-
 /**************************************************************************/
 /* phpDaemon
 /* Web: http://github.com/kakserpom/phpdaemon
@@ -8,8 +7,12 @@
 /* @author kak.serpom.po.yaitsam@gmail.com
 /* @description Bootstrap init script.
 /**************************************************************************/
-
+@ob_end_clean(); // clear shebang
 error_reporting(E_ALL);
+if (!version_compare(PHP_VERSION, '5.4.0', '>=')) {
+	echo 'PHP >= 5.4.0 required.' . PHP_EOL;
+	return;
+}
 
 foreach (array('/usr/share/phpdaemon', dirname(dirname(__FILE__))) as $d) {
 	if (@chdir($d)) {
@@ -17,60 +20,57 @@ foreach (array('/usr/share/phpdaemon', dirname(dirname(__FILE__))) as $d) {
 	}
 }
 
-ini_set('include_path', get_include_path() 
-	. ':' . dirname(dirname(__FILE__))
-	. ':' . dirname(dirname(__FILE__)).'/conf'
-	. ':/usr/share/phpdaemon:/etc/phpdaemon'
+ini_set('include_path', get_include_path()
+		. ':' . dirname(dirname(__FILE__))
+		. ':' . dirname(dirname(__FILE__)) . '/conf'
+		. ':/usr/share/phpdaemon:/etc/phpdaemon'
 );
-
-spl_autoload_register(function($classname) {
-	
-	$parts = explode('\\', $classname);
-	if (sizeof($parts) > 1 && ('PHPDaemon' == $parts[0])) {
-		// namespaces support (remove first "PHPDaemon\" part)
-		array_shift($parts);
-	}
-
-	$pathes = array('lib/' . implode('/', $parts) . '.php', 'lib/' . implode('/', $parts));
-	
-	foreach ($pathes as $path) {
-		if (file_exists($path)) {
-			require $path;
-			return;
+$autoloader = function ($classname) {
+	$base = str_replace('\\', '/', $classname);
+	$subpath = array($base . '.php', $base . '.class.php');
+	$e       = explode(':', get_include_path());
+	foreach ($e as $path) {
+		foreach ($subpath as $item) {
+			$file = rtrim($path, '/') . '/' . $item;
+			if (file_exists($file)) {
+				if (!@fopen($file,'r')) {
+					if (class_exists('\PHPDaemon\Core\Daemon', false)) {
+						$user = posix_getpwuid(posix_getuid());
+						$group = posix_getgrgid(posix_getgid());
+						\PHPDaemon\Core\Daemon::log('[EMERG] Autoloader: \''.$file.'\' exists but not readable by '. $user['name'] .':'.$group['name']);
+					}
+				} else {
+					require $file;
+					return true;
+				}
+			}
 		}
 	}
-	if (class_exists('Daemon', false) && isset(Daemon::$config->autoload->value)) {
-		$files = glob(sprintf(Daemon::$config->autoload->value, str_replace('_', DIRECTORY_SEPARATOR, $classname)), GLOB_BRACE);
-		if (isset($files[0])) {
-			require $files[0];
-			return;
-		}
+	return false;
+};
+$autoloadCache = array();
+spl_autoload_register(function ($classname) use ($autoloader, &$autoloadCache) {
+	if (isset($autoloadCache[$classname])) {
+		return $autoloadCache[$classname];
 	}
-	
-	if (class_exists('Daemon', false) && isset(Daemon::$config->appfilepath->value)) {
-		$files = glob($g = sprintf(Daemon::$config->appfilepath->value, str_replace('_', DIRECTORY_SEPARATOR, $classname)), GLOB_BRACE);
-		if (isset($files[0])) {
-			require $files[0];
-			return;
-		}
+	if ($autoloader($classname) === false) {
+		$autoloadCache[$classname] = false;
 	}
-	
 });
-
-require 'lib/BinarySubstr.php';
+require 'PHPDaemon/Core/Daemon.php';
+require 'PHPDaemon/Core/Debug.php';
+require 'PHPDaemon/FS/File.php';
 $e = null;
 execute:
 try {
 	if ($e) {
-		$thread = $e->thread;
-	    $e = null;
-		$thread->run();
-		$thread->shutdown();
+		$thread = $e->getThread();
+		$e      = null;
+		$thread();
 	}
 	else {
-	    Daemon_Bootstrap::init();
+		\PHPDaemon\Core\Bootstrap::init(isset($configFile) ? $configFile : null);
 	}
-} catch (ClearStackException $e) {
-    goto execute;
+} catch (\PHPDaemon\Exceptions\ClearStack $e) {
+	goto execute;
 }
-

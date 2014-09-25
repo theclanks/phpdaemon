@@ -1,27 +1,18 @@
 ## Config file
 
-user nobody;
-group nobody;
+#user john;
+#group workgroup;
 
 max-workers	8;
 min-workers	8;
 start-workers	8;
 max-idle	0;
+#add-include-path '/path/to/your/folder';
 
-Pool:FastCGIServer {
-	# you can redefine default settings for FastCGI
-}
-
-#Pool:HTTPServer {
-	# you can redefine default settings for FastCGI
+#\Your\Application {
+	# config of your application which class is "\Your\Application", in 
 #}
 
-Pool:WebSocketServer {
-}
-
-Example {
-	# config of your application Example
-}
 
 # other applications...
 

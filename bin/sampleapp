@@ -1,0 +1,5 @@
+#!/usr/bin/env php
+<?php
+$configFile = 'conf/phpd-sampleapp.conf';
+ob_start();
+include 'phpd';
